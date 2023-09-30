@@ -6,8 +6,6 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // Replace the sample below with your own migration scripts
-
         manager
             .create_table(
                 Table::create()
@@ -20,9 +18,20 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(User::Username).string().not_null())
-                    .col(ColumnDef::new(User::Email).string().not_null())
+                    .col(
+                        ColumnDef::new(User::Username)
+                            .string()
+                            .unique_key()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(User::Email).string().unique_key().not_null())
                     .col(ColumnDef::new(User::Role).integer().not_null())
+                    .col(ColumnDef::new(User::School).string().not_null())
+                    .col(ColumnDef::new(User::Name).string().not_null())
+                    .col(ColumnDef::new(User::AvatarUrl).string())
+                    .col(ColumnDef::new(User::Class).string().not_null())
+                    .col(ColumnDef::new(User::Score).integer().not_null())
+                    .col(ColumnDef::new(User::LastName).string().not_null())
                     .col(ColumnDef::new(User::CreatedAt).date_time().not_null())
                     .col(ColumnDef::new(User::UpdatedAt).date_time().not_null())
                     .col(ColumnDef::new(User::PasswordHash).string().not_null())
@@ -69,6 +78,7 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Task::RoomId).integer().not_null())
                     .col(ColumnDef::new(Task::Title).string().not_null())
+                    .col(ColumnDef::new(Task::Content).string().not_null())
                     .col(ColumnDef::new(Task::CreatedAt).date_time().not_null())
                     .col(ColumnDef::new(Task::UpdatedAt).date_time().not_null())
                     .foreign_key(
@@ -77,6 +87,25 @@ impl MigrationTrait for Migration {
                             .from(Task::Table, Task::RoomId)
                             .to(Room::Table, Room::Id),
                     )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(Achievment::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(Achievment::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(Achievment::Title).string().not_null())
+                    .col(ColumnDef::new(Achievment::Description).string().not_null())
+                    .col(ColumnDef::new(Achievment::CreatedAt).date_time().not_null())
+                    .col(ColumnDef::new(Achievment::UpdatedAt).date_time().not_null())
                     .to_owned(),
             )
             .await?;
@@ -94,6 +123,12 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(UserRoom::UserId).integer().not_null())
                     .col(ColumnDef::new(UserRoom::RoomId).integer().not_null())
+                    .col(
+                        ColumnDef::new(UserRoom::String)
+                            .string()
+                            .unique_key()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-user_room-user_id")
@@ -105,6 +140,45 @@ impl MigrationTrait for Migration {
                             .name("fk-user_room-room_id")
                             .from(UserRoom::Table, UserRoom::RoomId)
                             .to(Room::Table, Room::Id),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_table(
+                Table::create()
+                    .table(UserAchievment::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(UserAchievment::Id)
+                            .integer()
+                            .not_null()
+                            .auto_increment()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(UserAchievment::UserId).integer().not_null())
+                    .col(
+                        ColumnDef::new(UserAchievment::AchievmentId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(UserAchievment::String)
+                            .string()
+                            .unique_key()
+                            .not_null(),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-user_achievment-user_id")
+                            .from(UserAchievment::Table, UserAchievment::UserId)
+                            .to(User::Table, User::Id),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .name("fk-user_achievment-achievment_id")
+                            .from(UserAchievment::Table, UserAchievment::AchievmentId)
+                            .to(Achievment::Table, Achievment::Id),
                     )
                     .to_owned(),
             )
@@ -127,6 +201,12 @@ impl MigrationTrait for Migration {
         manager
             .drop_table(Table::drop().table(UserRoom::Table).to_owned())
             .await?;
+        manager
+            .drop_table(Table::drop().table(UserAchievment::Table).to_owned())
+            .await?;
+        manager
+            .drop_table(Table::drop().table(Achievment::Table).to_owned())
+            .await?;
         Ok(())
     }
 }
@@ -136,8 +216,14 @@ enum User {
     Table,
     Id,
     Username,
+    Name,
+    LastName,
+    School,
+    Score,
+    AvatarUrl,
     Email,
     Role,
+    Class,
     CreatedAt,
     UpdatedAt,
     PasswordHash,
@@ -149,6 +235,7 @@ enum Task {
     Table,
     Id,
     Title,
+    Content,
     RoomId,
     CreatedAt,
     UpdatedAt,
@@ -170,4 +257,24 @@ enum UserRoom {
     Id,
     UserId,
     RoomId,
+    String,
+}
+
+#[derive(DeriveIden)]
+enum UserAchievment {
+    Table,
+    Id,
+    UserId,
+    AchievmentId,
+    String,
+}
+
+#[derive(DeriveIden)]
+enum Achievment {
+    Table,
+    Id,
+    Title,
+    Description,
+    CreatedAt,
+    UpdatedAt,
 }

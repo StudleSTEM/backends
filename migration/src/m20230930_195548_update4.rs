@@ -28,6 +28,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::Role).integer().not_null())
                     .col(ColumnDef::new(User::School).string().not_null())
                     .col(ColumnDef::new(User::Name).string().not_null())
+                    .col(ColumnDef::new(User::AvatarUrl).string())
+                    .col(ColumnDef::new(User::Class).string().not_null())
                     .col(ColumnDef::new(User::Score).integer().not_null())
                     .col(ColumnDef::new(User::LastName).string().not_null())
                     .col(ColumnDef::new(User::CreatedAt).date_time().not_null())
@@ -218,8 +220,10 @@ enum User {
     LastName,
     School,
     Score,
+    AvatarUrl,
     Email,
     Role,
+    Class,
     CreatedAt,
     UpdatedAt,
     PasswordHash,
