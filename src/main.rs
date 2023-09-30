@@ -122,81 +122,6 @@ impl QueryRoot {
         }
     }
 
-    async fn get_users_from_classroom(
-        &self,
-        ctx: &async_graphql::Context<'_>,
-        room_id: i32,
-        access_token: String,
-    ) -> Result<Vec<user::Model>, async_graphql::Error> {
-        let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
-            Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
-        };
-        let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
-            Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
-        };
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as usize;
-        if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
-            let id = claims["id"].parse::<i32>().unwrap();
-            let rooms: Option<Vec<user_room::Model>> = Some(
-                UserRoom::find()
-                    .filter(user_room::Column::UserId.eq(id))
-                    .all(&my_ctx.db)
-                    .await?,
-            );
-
-            let rooms = match rooms {
-                Some(rooms) => rooms,
-                None => return Err(async_graphql::Error::new("room not found".to_string())),
-            };
-
-            let ids: Vec<i32> = rooms.iter().map(|room| room.room_id).collect();
-
-            if ids.contains(&room_id) {
-                let rooms: Option<Vec<user_room::Model>> = Some(
-                    UserRoom::find()
-                        .filter(user_room::Column::RoomId.eq(room_id))
-                        .all(&my_ctx.db)
-                        .await?,
-                );
-
-                let rooms = match rooms {
-                    Some(rooms) => rooms,
-                    None => return Err(async_graphql::Error::new("room not found".to_string())),
-                };
-
-                let ids: Vec<i32> = rooms.iter().map(|room| room.user_id).collect();
-
-                let users: Option<Vec<user::Model>> = Some(
-                    User::find()
-                        .filter(user::Column::Id.is_in(ids))
-                        .all(&my_ctx.db)
-                        .await?,
-                );
-
-                let users = match users {
-                    Some(users) => users,
-                    None => return Err(async_graphql::Error::new("room not found".to_string())),
-                };
-
-                Ok(users)
-            } else {
-                return Err(async_graphql::Error::new(
-                    "you do not exist in this room".to_string(),
-                ));
-            }
-        } else {
-            return Err(async_graphql::Error::new(
-                "you are not loged in".to_string(),
-            ));
-        }
-    }
-
     async fn get_task(
         &self,
         ctx: &async_graphql::Context<'_>,
@@ -228,24 +153,93 @@ impl QueryRoot {
         Ok(user)
     }
 
-    async fn get_room_tasks(
+    async fn get_room(
         &self,
         ctx: &async_graphql::Context<'_>,
-        id: i32,
+        room_id: i32,
         access_token: String,
-    ) -> Result<Vec<task::Model>, async_graphql::Error> {
+    ) -> Result<room::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-
-        let room: Option<room::Model> = Room::find_by_id(id).one(&my_ctx.db).await?;
-
-        let room = match room {
-            Some(room) => room,
-            None => return Err(async_graphql::Error::new("Wrong room id".to_string())),
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+            Ok(key) => key,
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
+        let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
+            Ok(res) => res,
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
+            let id = claims["id"].parse::<i32>().unwrap();
+            let rooms: Option<Vec<user_room::Model>> = Some(
+                UserRoom::find()
+                    .filter(user_room::Column::UserId.eq(id))
+                    .all(&my_ctx.db)
+                    .await?,
+            );
 
-        let tasks: Vec<task::Model> = room.find_related(Task).all(&my_ctx.db).await?;
+            let rooms = match rooms {
+                Some(rooms) => rooms,
+                None => return Err(async_graphql::Error::new("room not found".to_string())),
+            };
 
-        return Ok(tasks);
+            let ids: Vec<i32> = rooms.iter().map(|room| room.room_id).collect();
+
+            println!("{:?}", ids);
+
+            if ids.contains(&room_id) {
+                let rooms: Option<Vec<user_room::Model>> = Some(
+                    UserRoom::find()
+                        .filter(user_room::Column::RoomId.eq(room_id))
+                        .all(&my_ctx.db)
+                        .await?,
+                );
+
+                let rooms = match rooms {
+                    Some(rooms) => rooms,
+                    None => return Err(async_graphql::Error::new("room not found".to_string())),
+                };
+
+                let ids: Vec<i32> = rooms.iter().map(|room| room.user_id).collect();
+
+                let users: Option<Vec<user::Model>> = Some(
+                    User::find()
+                        .filter(user::Column::Id.is_in(ids))
+                        .all(&my_ctx.db)
+                        .await?,
+                );
+
+                let tasks: Option<Vec<task::Model>> = Some(Task::find().all(&my_ctx.db).await?);
+
+                let users = match users {
+                    Some(users) => users,
+                    None => return Err(async_graphql::Error::new("internal error".to_string())),
+                };
+
+                let room: Option<room::Model> = Room::find_by_id(room_id).one(&my_ctx.db).await?;
+
+                let mut room = match room {
+                    Some(room) => room,
+                    None => return Err(async_graphql::Error::new("room not found".to_string())),
+                };
+
+                room.users = users;
+                room.tasks = tasks.unwrap();
+
+                Ok(room)
+            } else {
+                return Err(async_graphql::Error::new(
+                    "you do not exist in this room".to_string(),
+                ));
+            }
+        } else {
+            return Err(async_graphql::Error::new(
+                "you are not loged in".to_string(),
+            ));
+        }
     }
 
     async fn get_my_rooms(
@@ -670,6 +664,7 @@ impl MutationRoot {
         access_token: String,
         room_id: i32,
         title: String,
+        content: String,
     ) -> Result<task::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
@@ -685,7 +680,7 @@ impl MutationRoot {
             .unwrap()
             .as_secs() as usize;
         if claims["sub"] == "someone"
-            && claims["role"] == "1"
+            && (claims["role"] == "1" || claims["role"] == "2")
             && claims["exp"].parse::<usize>().unwrap() >= now
         {
             let naive_date_time = Utc::now().naive_utc();
@@ -694,6 +689,7 @@ impl MutationRoot {
                 updated_at: Set(naive_date_time),
                 room_id: Set(room_id),
                 title: Set(title),
+                content: Set(content),
                 ..Default::default()
             };
             let task: task::Model = task.insert(&my_ctx.db).await?;

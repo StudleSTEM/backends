@@ -18,6 +18,8 @@ pub struct Model {
 
     #[sea_orm(ignore)]
     pub tasks: Vec<super::task::Model>,
+    #[sea_orm(ignore)]
+    pub users: Vec<super::user::Model>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
