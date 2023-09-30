@@ -7,6 +7,7 @@ use argon2::{
 use async_graphql::{http::GraphiQLSource, EmptySubscription, Object, Schema, SimpleObject};
 use async_graphql_actix_web::GraphQL;
 use chrono::Utc;
+use dotenvy::dotenv;
 use entity::{
     achievment::{self, Entity as Achievment},
     room::{self, Entity as Room},
@@ -29,6 +30,9 @@ use std::{
 };
 
 use std::collections::HashSet;
+
+const ACCESS_EXPIRATION: usize = 30;
+const REFRESH_EXPIRATION: usize = 180;
 
 async fn index_graphiql() -> Result<HttpResponse> {
     Ok(HttpResponse::Ok()
@@ -123,7 +127,7 @@ impl QueryRoot {
         ctx: &async_graphql::Context<'_>,
         id: i32,
         access_token: String,
-    ) -> Result<Vec<user::Model>, async_graphql::Error> {
+    ) -> Result<Vec<user_room::Model>, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
@@ -138,24 +142,24 @@ impl QueryRoot {
             .unwrap()
             .as_secs() as usize;
         if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
-            let user_rooms: Vec<user_room::Model> = user_room::Entity::find()
-                .filter(user_room::Column::RoomId.eq(id))
-                .all(&my_ctx.db)
-                .await?;
+            let id = claims["id"].parse::<i32>().unwrap();
+            let advert: Option<Vec<user_room::Model>> = Some(
+                UserRoom::find()
+                    .filter(user_room::Column::UserId.eq(id))
+                    .all(&my_ctx.db)
+                    .await?,
+            );
 
-            let user_ids: Vec<i32> = user_rooms
-                .into_iter()
-                .map(|user_room| user_room.user_id)
-                .collect();
+            println!("wtf {:?}", advert);
 
-            let users: Vec<user::Model> = user::Entity::find()
-                .filter(user::Column::Id.is_in(user_ids))
-                .all(&my_ctx.db)
-                .await?;
+            // let users: Option<Vec<user::Model>> = Some(User::find().all(&my_ctx.db).await?);
 
-            println!("{:?}", users);
+            let advert = match advert {
+                Some(advert) => advert,
+                None => return Err(async_graphql::Error::new("advert not found".to_string())),
+            };
 
-            Ok(users)
+            Ok(advert)
         } else {
             return Err(async_graphql::Error::new(
                 "you are not loged in".to_string(),
@@ -221,7 +225,6 @@ impl QueryRoot {
             .unwrap()
             .as_secs() as usize;
         if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
-            println!("{}, {}", claims["exp"], now);
             let id: i32 = claims["id"].parse().unwrap();
             let user: Option<user::Model> = User::find_by_id(id).one(&my_ctx.db).await?;
 
@@ -345,9 +348,9 @@ impl MutationRoot {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_secs() as usize;
-            let expiration = now + (1 * 60); // 1 minutes from now
+            let expiration = now + (ACCESS_EXPIRATION * 60); // 1 minutes from now
             let expiration = expiration.to_string();
-            let expiration2 = now + (60 * 60); // 60 minutes from now
+            let expiration2 = now + (REFRESH_EXPIRATION * 60); // 60 minutes from now
             let expiration2 = expiration2.to_string();
 
             let id = user.id.to_string();
@@ -529,6 +532,7 @@ impl MutationRoot {
         let userAchievement = user_achievment::ActiveModel {
             user_id: Set(user_id),
             achievment_id: Set(achievment_id),
+            string: Set(format!("{}-{}", user_id, achievment_id)),
             ..Default::default()
         };
 
@@ -546,6 +550,7 @@ impl MutationRoot {
         let user_room = user_room::ActiveModel {
             user_id: Set(user_id),
             room_id: Set(room_id),
+            string: Set(format!("{}-{}", user_id, room_id)),
             ..Default::default()
         };
 
@@ -556,14 +561,15 @@ impl MutationRoot {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    dotenv().expect(".env file not found");
+    let db_url = dotenvy::var("DATABASE_URL").expect("HOME environment variable not found");
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
         .init();
-    let db: DatabaseConnection =
-        Database::connect("postgres://postgres:password@localhost:5432/stem")
-            .await
-            .expect("error with connection");
+    let db: DatabaseConnection = Database::connect(db_url)
+        .await
+        .expect("error with connection");
 
     Migrator::up(&db, None).await.expect("migration ban");
 

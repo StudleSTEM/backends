@@ -19,6 +19,7 @@ mod m20230930_114450_update14;
 mod m20230930_115447_update15;
 mod m20230930_132541_update16;
 mod m20230930_132830_update17;
+mod m20230930_142315_update19;
 
 pub struct Migrator;
 
@@ -45,6 +46,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20230930_115447_update15::Migration),
             Box::new(m20230930_132541_update16::Migration),
             Box::new(m20230930_132830_update17::Migration),
+            Box::new(m20230930_142315_update19::Migration),
         ]
     }
 }
