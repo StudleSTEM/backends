@@ -20,6 +20,8 @@ pub struct Model {
 
     pub score: i32,
 
+    pub avatar_url: Option<String>,
+
     pub class: String,
     #[sea_orm(column_name = "email")]
     pub email: String,

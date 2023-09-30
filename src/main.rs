@@ -278,11 +278,6 @@ impl QueryRoot {
             let user_rooms: Vec<user_room::Model> =
                 user.find_related(UserRoom).all(&my_ctx.db).await?;
 
-            // let rooms: Vec<room::Model> = user_rooms
-            //     .into_iter()
-            //     .map(|user_room| user_room.find_related(Room).one(&my_ctx.db))
-            //     .collect::<Result<Vec<_>, _>>()?;
-
             Ok(user_rooms)
         } else {
             return Err(async_graphql::Error::new(
@@ -338,6 +333,7 @@ impl MutationRoot {
                 school: Set(school),
                 class: Set(class),
                 score: Set(0),
+                avatar_url: Set(None),
                 ..Default::default()
             };
 
@@ -422,10 +418,12 @@ impl MutationRoot {
                     Ok(token) => token,
                     Err(err) => return Err(async_graphql::Error::new(err.to_string())),
                 };
+                let naive_date_time = Utc::now().naive_utc();
 
                 user::ActiveModel {
                     id: Set(user.id),
                     refresh_token: Set(Some(refresh_token.clone())),
+                    updated_at: Set(naive_date_time),
                     ..Default::default()
                 }
                 .update(&my_ctx.db)
@@ -518,9 +516,12 @@ impl MutationRoot {
                 Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
+            let naive_date_time = Utc::now().naive_utc();
+
             user::ActiveModel {
                 id: Set(user.id),
                 refresh_token: Set(Some(refresh_token.clone())),
+                updated_at: Set(naive_date_time),
                 ..Default::default()
             }
             .update(&my_ctx.db)
@@ -586,6 +587,7 @@ impl MutationRoot {
         name: Option<String>,
         last_name: Option<String>,
         class: Option<String>,
+        avatar_url: Option<String>,
     ) -> Result<user::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
@@ -637,6 +639,13 @@ impl MutationRoot {
             match class {
                 Some(class) => {
                     newuser.class = Set(class);
+                }
+                None => (),
+            }
+
+            match avatar_url {
+                Some(avatar_url) => {
+                    newuser.avatar_url = Set(Some(avatar_url));
                 }
                 None => (),
             }
@@ -759,8 +768,10 @@ impl MutationRoot {
         };
 
         let mut newuser: user::ActiveModel = user.into();
+        let naive_date_time = Utc::now().naive_utc();
 
         newuser.score = Set(newuser.score.unwrap() + 1);
+        newuser.updated_at = Set(naive_date_time);
 
         newuser.update(&my_ctx.db).await?;
 
