@@ -18,7 +18,9 @@ pub struct Model {
 
     pub school: String,
 
-    // pub class: String,
+    pub score: i32,
+
+    pub class: String,
     #[sea_orm(column_name = "email")]
     pub email: String,
 

@@ -216,7 +216,6 @@ enum User {
     Name,
     LastName,
     School,
-    Class,
     Email,
     Role,
     CreatedAt,

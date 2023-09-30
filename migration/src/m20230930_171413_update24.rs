@@ -28,6 +28,8 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(User::Role).integer().not_null())
                     .col(ColumnDef::new(User::School).string().not_null())
                     .col(ColumnDef::new(User::Name).string().not_null())
+                    .col(ColumnDef::new(User::Class).string().not_null())
+                    .col(ColumnDef::new(User::Score).integer().not_null())
                     .col(ColumnDef::new(User::LastName).string().not_null())
                     .col(ColumnDef::new(User::CreatedAt).date_time().not_null())
                     .col(ColumnDef::new(User::UpdatedAt).date_time().not_null())
@@ -99,7 +101,7 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(Achievment::Title).integer().not_null())
+                    .col(ColumnDef::new(Achievment::Title).string().not_null())
                     .col(ColumnDef::new(Achievment::Description).string().not_null())
                     .col(ColumnDef::new(Achievment::CreatedAt).date_time().not_null())
                     .col(ColumnDef::new(Achievment::UpdatedAt).date_time().not_null())
@@ -120,6 +122,12 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(UserRoom::UserId).integer().not_null())
                     .col(ColumnDef::new(UserRoom::RoomId).integer().not_null())
+                    .col(
+                        ColumnDef::new(UserRoom::String)
+                            .string()
+                            .unique_key()
+                            .not_null(),
+                    )
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-user_room-user_id")
@@ -151,6 +159,12 @@ impl MigrationTrait for Migration {
                     .col(
                         ColumnDef::new(UserAchievment::AchievmentId)
                             .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(UserAchievment::String)
+                            .string()
+                            .unique_key()
                             .not_null(),
                     )
                     .foreign_key(
@@ -204,8 +218,10 @@ enum User {
     Name,
     LastName,
     School,
+    Score,
     Email,
     Role,
+    Class,
     CreatedAt,
     UpdatedAt,
     PasswordHash,
@@ -239,6 +255,7 @@ enum UserRoom {
     Id,
     UserId,
     RoomId,
+    String,
 }
 
 #[derive(DeriveIden)]
@@ -247,6 +264,7 @@ enum UserAchievment {
     Id,
     UserId,
     AchievmentId,
+    String,
 }
 
 #[derive(DeriveIden)]

@@ -20,8 +20,8 @@ use hmac::{Hmac, Mac};
 use jwt::{SignWithKey, VerifyWithKey};
 use migration::{Migrator, MigratorTrait};
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, DbErr, EntityTrait, ModelTrait,
-    QueryFilter, Set,
+    ActiveModelTrait, ColumnTrait, Database, DatabaseConnection, EntityTrait, ModelTrait,
+    QueryFilter, Set, TryIntoModel,
 };
 use sha2::Sha256;
 use std::{
@@ -69,11 +69,11 @@ impl QueryRoot {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -89,7 +89,7 @@ impl QueryRoot {
                 None => return Err(async_graphql::Error::new("Wrong token".to_string())),
             };
 
-            let userAchievments: Vec<user_achievment::Model> =
+            let user_achievments: Vec<user_achievment::Model> =
                 user.find_related(UserAchievment).all(&my_ctx.db).await?;
 
             let achievments: Option<Vec<achievment::Model>> =
@@ -100,7 +100,7 @@ impl QueryRoot {
                 None => return Err(async_graphql::Error::new("task not found".to_string())),
             };
 
-            let achievments_ids = userAchievments
+            let achievments_ids = user_achievments
                 .into_iter()
                 .map(|model| model.achievment_id)
                 .collect::<HashSet<_>>();
@@ -125,17 +125,17 @@ impl QueryRoot {
     async fn get_users_from_classroom(
         &self,
         ctx: &async_graphql::Context<'_>,
-        id: i32,
+        room_id: i32,
         access_token: String,
-    ) -> Result<Vec<user_room::Model>, async_graphql::Error> {
+    ) -> Result<Vec<user::Model>, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -143,23 +143,53 @@ impl QueryRoot {
             .as_secs() as usize;
         if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
             let id = claims["id"].parse::<i32>().unwrap();
-            let advert: Option<Vec<user_room::Model>> = Some(
+            let rooms: Option<Vec<user_room::Model>> = Some(
                 UserRoom::find()
                     .filter(user_room::Column::UserId.eq(id))
                     .all(&my_ctx.db)
                     .await?,
             );
 
-            println!("wtf {:?}", advert);
-
-            // let users: Option<Vec<user::Model>> = Some(User::find().all(&my_ctx.db).await?);
-
-            let advert = match advert {
-                Some(advert) => advert,
-                None => return Err(async_graphql::Error::new("advert not found".to_string())),
+            let rooms = match rooms {
+                Some(rooms) => rooms,
+                None => return Err(async_graphql::Error::new("room not found".to_string())),
             };
 
-            Ok(advert)
+            let ids: Vec<i32> = rooms.iter().map(|room| room.room_id).collect();
+
+            if ids.contains(&room_id) {
+                let rooms: Option<Vec<user_room::Model>> = Some(
+                    UserRoom::find()
+                        .filter(user_room::Column::RoomId.eq(room_id))
+                        .all(&my_ctx.db)
+                        .await?,
+                );
+
+                let rooms = match rooms {
+                    Some(rooms) => rooms,
+                    None => return Err(async_graphql::Error::new("room not found".to_string())),
+                };
+
+                let ids: Vec<i32> = rooms.iter().map(|room| room.user_id).collect();
+
+                let users: Option<Vec<user::Model>> = Some(
+                    User::find()
+                        .filter(user::Column::Id.is_in(ids))
+                        .all(&my_ctx.db)
+                        .await?,
+                );
+
+                let users = match users {
+                    Some(users) => users,
+                    None => return Err(async_graphql::Error::new("room not found".to_string())),
+                };
+
+                Ok(users)
+            } else {
+                return Err(async_graphql::Error::new(
+                    "you do not exist in this room".to_string(),
+                ));
+            }
         } else {
             return Err(async_graphql::Error::new(
                 "you are not loged in".to_string(),
@@ -184,6 +214,18 @@ impl QueryRoot {
 
         // You can now access the database connection via `my_ctx.db`
         return Ok(task);
+    }
+
+    async fn get_user(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        id: i32,
+    ) -> Result<Option<user::Model>, async_graphql::Error> {
+        let my_ctx = ctx.data::<Context>().unwrap();
+
+        let user: Option<user::Model> = User::find_by_id(id).one(&my_ctx.db).await?;
+
+        Ok(user)
     }
 
     async fn get_room_tasks(
@@ -214,11 +256,11 @@ impl QueryRoot {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -264,6 +306,7 @@ impl MutationRoot {
         name: String,
         last_name: String,
         school: String,
+        class: String,
     ) -> Result<user::Model, async_graphql::Error> {
         if role == 1 || role == 0 {
             let my_ctx = ctx.data::<Context>().unwrap();
@@ -293,6 +336,8 @@ impl MutationRoot {
                 name: Set(name),
                 last_name: Set(last_name),
                 school: Set(school),
+                class: Set(class),
+                score: Set(0),
                 ..Default::default()
             };
 
@@ -313,17 +358,13 @@ impl MutationRoot {
 
         let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret") {
             Ok(key) => key,
-            Err(err) => {
-                return Err(async_graphql::Error::new("Wrong token".to_string()));
-            }
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
 
         let claims: BTreeMap<String, String> =
             match refresh_token.clone().verify_with_key(&refresh_key) {
                 Ok(res) => res,
-                Err(err) => {
-                    return Err(async_graphql::Error::new("Wrong token".to_string()));
-                }
+                Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
         let now = SystemTime::now()
@@ -342,7 +383,7 @@ impl MutationRoot {
             if user.refresh_token == Some(refresh_token.clone()) {
                 let access_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
                     Ok(key) => key,
-                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                    Err(err) => return Err(async_graphql::Error::new(err.to_string())),
                 };
 
                 let mut refresh_claims = BTreeMap::new();
@@ -367,7 +408,7 @@ impl MutationRoot {
 
                 let refresh_token = match refresh_claims.clone().sign_with_key(&refresh_key) {
                     Ok(token) => token,
-                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                    Err(err) => return Err(async_graphql::Error::new(err.to_string())),
                 };
 
                 let mut access_claims = BTreeMap::new();
@@ -379,7 +420,7 @@ impl MutationRoot {
 
                 let access_token = match access_claims.sign_with_key(&access_key) {
                     Ok(token) => token,
-                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                    Err(err) => return Err(async_graphql::Error::new(err.to_string())),
                 };
 
                 user::ActiveModel {
@@ -433,12 +474,12 @@ impl MutationRoot {
         if response {
             let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret") {
                 Ok(key) => key,
-                Err(err) => return Err(async_graphql::Error::new("internal error".to_string())),
+                Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
             let access_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
                 Ok(key) => key,
-                Err(err) => return Err(async_graphql::Error::new("internal error".to_string())),
+                Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
             let mut refresh_claims = BTreeMap::new();
@@ -463,7 +504,7 @@ impl MutationRoot {
 
             let refresh_token = match refresh_claims.clone().sign_with_key(&refresh_key) {
                 Ok(token) => token,
-                Err(err) => return Err(async_graphql::Error::new("internal error".to_string())),
+                Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
             let mut access_claims = BTreeMap::new();
@@ -474,7 +515,7 @@ impl MutationRoot {
             access_claims.insert("role", &role);
             let access_token = match access_claims.sign_with_key(&access_key) {
                 Ok(token) => token,
-                Err(err) => return Err(async_graphql::Error::new("internal error".to_string())),
+                Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
             user::ActiveModel {
@@ -505,11 +546,11 @@ impl MutationRoot {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -537,6 +578,83 @@ impl MutationRoot {
         }
     }
 
+    async fn edit(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        access_token: String,
+        school: Option<String>,
+        name: Option<String>,
+        last_name: Option<String>,
+        class: Option<String>,
+    ) -> Result<user::Model, async_graphql::Error> {
+        let my_ctx = ctx.data::<Context>().unwrap();
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+            Ok(key) => key,
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+        let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
+            Ok(res) => res,
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
+        };
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+        if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
+            let id = claims["id"].parse::<i32>().unwrap();
+            let naive_date_time = Utc::now().naive_utc();
+
+            let user: Option<user::Model> = User::find_by_id(id).one(&my_ctx.db).await?;
+
+            let user = match user {
+                Some(user) => user,
+                None => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            };
+
+            let mut newuser: user::ActiveModel = user.into();
+
+            match school {
+                Some(school) => {
+                    newuser.school = Set(school);
+                }
+                None => (),
+            }
+
+            match name {
+                Some(name) => {
+                    newuser.name = Set(name);
+                }
+                None => (),
+            }
+
+            match last_name {
+                Some(last_name) => {
+                    newuser.last_name = Set(last_name);
+                }
+                None => (),
+            }
+
+            match class {
+                Some(class) => {
+                    newuser.class = Set(class);
+                }
+                None => (),
+            }
+
+            newuser.updated_at = Set(naive_date_time);
+
+            newuser.clone().update(&my_ctx.db).await?;
+
+            let updated_user: user::Model = newuser.try_into_model().unwrap();
+
+            Ok(updated_user)
+        } else {
+            return Err(async_graphql::Error::new(
+                "you are not loged in or you are not a teacher".to_string(),
+            ));
+        }
+    }
+
     async fn create_task(
         &self,
         ctx: &async_graphql::Context<'_>,
@@ -547,11 +665,11 @@ impl MutationRoot {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -561,7 +679,6 @@ impl MutationRoot {
             && claims["role"] == "1"
             && claims["exp"].parse::<usize>().unwrap() >= now
         {
-            let id = claims["id"].parse::<i32>().unwrap();
             let naive_date_time = Utc::now().naive_utc();
             let task = task::ActiveModel {
                 created_at: Set(naive_date_time),
@@ -589,11 +706,11 @@ impl MutationRoot {
         let my_ctx = ctx.data::<Context>().unwrap();
         let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
             Ok(key) => key,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let claims: BTreeMap<String, String> = match access_token.verify_with_key(&key) {
             Ok(res) => res,
-            Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -627,14 +744,28 @@ impl MutationRoot {
         achievment_id: i32,
     ) -> Result<user_achievment::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let userAchievement = user_achievment::ActiveModel {
+        let user_achievement = user_achievment::ActiveModel {
             user_id: Set(user_id),
             achievment_id: Set(achievment_id),
             string: Set(format!("{}-{}", user_id, achievment_id)),
             ..Default::default()
         };
 
-        let achievment: user_achievment::Model = userAchievement.insert(&my_ctx.db).await?;
+        let user: Option<user::Model> = User::find_by_id(user_id).one(&my_ctx.db).await?;
+
+        let user = match user {
+            Some(user) => user,
+            None => return Err(async_graphql::Error::new("Wrong token".to_string())),
+        };
+
+        let mut newuser: user::ActiveModel = user.into();
+
+        newuser.score = Set(newuser.score.unwrap() + 1);
+
+        newuser.update(&my_ctx.db).await?;
+
+        let achievment: user_achievment::Model = user_achievement.insert(&my_ctx.db).await?;
+
         Ok(achievment)
     }
 
