@@ -304,6 +304,104 @@ impl MutationRoot {
         }
     }
 
+    async fn refresh(
+        &self,
+        ctx: &async_graphql::Context<'_>,
+        refresh_token: String,
+    ) -> Result<LoginResponse, async_graphql::Error> {
+        let my_ctx = ctx.data::<Context>().unwrap();
+
+        let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret") {
+            Ok(key) => key,
+            Err(err) => {
+                return Err(async_graphql::Error::new("Wrong token".to_string()));
+            }
+        };
+
+        let claims: BTreeMap<String, String> =
+            match refresh_token.clone().verify_with_key(&refresh_key) {
+                Ok(res) => res,
+                Err(err) => {
+                    return Err(async_graphql::Error::new("Wrong token".to_string()));
+                }
+            };
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+
+        if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
+            let user: Option<user::Model> = User::find_by_id(1).one(&my_ctx.db).await?;
+
+            let user = match user {
+                Some(user) => user,
+                None => return Err(async_graphql::Error::new("Wrong token".to_string())),
+            };
+
+            if user.refresh_token == Some(refresh_token.clone()) {
+                let access_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+                    Ok(key) => key,
+                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                };
+
+                let mut refresh_claims = BTreeMap::new();
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as usize;
+                let expiration = now + (ACCESS_EXPIRATION * 60); // 1 minutes from now
+                let expiration = expiration.to_string();
+                let expiration2 = now + (REFRESH_EXPIRATION * 60); // 60 minutes from now
+                let expiration2 = expiration2.to_string();
+
+                let id = user.id.to_string();
+                let email = user.email.to_string();
+                let role = user.role.to_string();
+
+                refresh_claims.insert("sub", "someone");
+                refresh_claims.insert("id", &id);
+                refresh_claims.insert("email", &email);
+                refresh_claims.insert("exp", &expiration2);
+                refresh_claims.insert("role", &role);
+
+                let refresh_token = match refresh_claims.clone().sign_with_key(&refresh_key) {
+                    Ok(token) => token,
+                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                };
+
+                let mut access_claims = BTreeMap::new();
+                access_claims.insert("sub", "someone");
+                access_claims.insert("id", &id);
+                access_claims.insert("email", &email);
+                access_claims.insert("exp", &expiration);
+                access_claims.insert("role", &role);
+
+                let access_token = match access_claims.sign_with_key(&access_key) {
+                    Ok(token) => token,
+                    Err(err) => return Err(async_graphql::Error::new("Wrong token".to_string())),
+                };
+
+                user::ActiveModel {
+                    id: Set(user.id),
+                    refresh_token: Set(Some(refresh_token.clone())),
+                    ..Default::default()
+                }
+                .update(&my_ctx.db)
+                .await?;
+
+                return Ok(LoginResponse {
+                    refresh_token,
+                    access_token,
+                });
+            } else {
+                return Err(async_graphql::Error::new("Wrong token".to_string()));
+            }
+        } else {
+            return Err(async_graphql::Error::new("Wrong token".to_string()));
+        }
+    }
+
     async fn login(
         &self,
         ctx: &async_graphql::Context<'_>,
