@@ -97,7 +97,7 @@ impl QueryRoot {
 
             let achievments = match achievments {
                 Some(achievments) => achievments,
-                None => return Err(async_graphql::Error::new("task not found".to_string())),
+                None => return Err(async_graphql::Error::new("user not found".to_string())),
             };
 
             let achievments_ids = user_achievments
