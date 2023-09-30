@@ -31,7 +31,7 @@ use std::{
 
 use std::collections::HashSet;
 
-const ACCESS_EXPIRATION: usize = 30;
+const ACCESS_EXPIRATION: usize = 5;
 const REFRESH_EXPIRATION: usize = 180;
 
 async fn index_graphiql() -> Result<HttpResponse> {
@@ -363,7 +363,8 @@ impl MutationRoot {
             .as_secs() as usize;
 
         if claims["sub"] == "someone" && claims["exp"].parse::<usize>().unwrap() >= now {
-            let user: Option<user::Model> = User::find_by_id(1).one(&my_ctx.db).await?;
+            let id = claims["id"].parse::<i32>().unwrap();
+            let user: Option<user::Model> = User::find_by_id(id).one(&my_ctx.db).await?;
 
             let user = match user {
                 Some(user) => user,
