@@ -92,27 +92,24 @@ impl QueryRoot {
             let user_achievments: Vec<user_achievment::Model> =
                 user.find_related(UserAchievment).all(&my_ctx.db).await?;
 
-            let achievments: Option<Vec<achievment::Model>> =
-                Some(Achievment::find().all(&my_ctx.db).await?);
+            let ids: Vec<i32> = user_achievments
+                .iter()
+                .map(|achievment| achievment.achievment_id)
+                .collect();
 
-            let achievments = match achievments {
-                Some(achievments) => achievments,
+            let achs: Option<Vec<achievment::Model>> = Some(
+                Achievment::find()
+                    .filter(achievment::Column::Id.is_in(ids))
+                    .all(&my_ctx.db)
+                    .await?,
+            );
+
+            let achs = match achs {
+                Some(achs) => achs,
                 None => return Err(async_graphql::Error::new("user not found".to_string())),
             };
 
-            let achievments_ids = user_achievments
-                .into_iter()
-                .map(|model| model.achievment_id)
-                .collect::<HashSet<_>>();
-
-            let achievements = achievments
-                .into_iter()
-                .filter(|model| achievments_ids.contains(&model.id))
-                .collect::<Vec<_>>();
-
-            println!("{:?}", achievements);
-
-            user.achievments = achievements;
+            user.achievments = achs;
 
             return Ok(user);
         } else {
@@ -145,10 +142,46 @@ impl QueryRoot {
         &self,
         ctx: &async_graphql::Context<'_>,
         id: i32,
-    ) -> Result<Option<user::Model>, async_graphql::Error> {
+    ) -> Result<user::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
 
         let user: Option<user::Model> = User::find_by_id(id).one(&my_ctx.db).await?;
+
+        let mut user = match user {
+            Some(user) => user,
+            None => return Err(async_graphql::Error::new("user not found".to_string())),
+        };
+
+        let achievments: Option<Vec<user_achievment::Model>> = Some(
+            UserAchievment::find()
+                .filter(user_achievment::Column::UserId.eq(id))
+                .all(&my_ctx.db)
+                .await?,
+        );
+
+        let achievments = match achievments {
+            Some(achievments) => achievments,
+            None => return Err(async_graphql::Error::new("room not found".to_string())),
+        };
+
+        let ids: Vec<i32> = achievments
+            .iter()
+            .map(|achievment| achievment.achievment_id)
+            .collect();
+
+        let achs: Option<Vec<achievment::Model>> = Some(
+            Achievment::find()
+                .filter(achievment::Column::Id.is_in(ids))
+                .all(&my_ctx.db)
+                .await?,
+        );
+
+        let achs = match achs {
+            Some(achs) => achs,
+            None => return Err(async_graphql::Error::new("user not found".to_string())),
+        };
+
+        user.achievments = achs;
 
         Ok(user)
     }
