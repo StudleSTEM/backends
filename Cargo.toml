@@ -1,0 +1,25 @@
+[package]
+name = "hackaton"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-cors = "0.6.4"
+actix-web = "4.4.0"
+async-graphql-actix-web = "6.0.7"
+chrono = "0.4.31"
+dotenvy = "0.15.7"
+hmac = "0.12.1"
+jwt = "0.16.0"
+sea-orm = { version="0.12.3", features = ["runtime-tokio" , "sqlx-postgres", "macros" ]}
+sha2 = "0.10.8"
+sqlx ={ version="0.7.2", features = ["runtime-tokio"]}
+migration = { path = "migration" }
+tokio = {version="1.32.0", features = ["full"]}
+tracing = "0.1.37"
+tracing-subscriber = "0.3.17"
+async-graphql = "6.0.7"
+entity = { path = "entity" }
+argon2 = "0.5.2"
