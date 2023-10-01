@@ -40,6 +40,9 @@ pub struct Model {
 
     #[sea_orm(ignore)]
     pub achievments: Vec<super::achievment::Model>,
+
+    #[sea_orm(ignore)]
+    pub rooms: Vec<super::room::Model>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
