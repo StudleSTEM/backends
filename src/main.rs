@@ -31,7 +31,7 @@ use std::{
 
 use std::collections::HashSet;
 
-const ACCESS_EXPIRATION: usize = 5;
+const ACCESS_EXPIRATION: usize = 100;
 const REFRESH_EXPIRATION: usize = 180;
 
 async fn index_graphiql() -> Result<HttpResponse> {
