@@ -47,13 +47,19 @@ pub struct LoginResponse {
     access_token: String,
 }
 
-pub struct Context {
-    pub db: DatabaseConnection,
+struct Context {
+    db: DatabaseConnection,
+    acs_key: String,
+    refr_key: String,
 }
 
 impl Context {
-    pub fn new(db: DatabaseConnection) -> Self {
-        Self { db }
+    fn new(db: DatabaseConnection, acs_key: String, refr_key: String) -> Self {
+        Self {
+            db,
+            acs_key,
+            refr_key,
+        }
     }
 }
 
@@ -67,7 +73,7 @@ impl QueryRoot {
         access_token: String,
     ) -> Result<user::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -211,7 +217,7 @@ impl QueryRoot {
         access_token: String,
     ) -> Result<room::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -299,7 +305,7 @@ impl QueryRoot {
     //     access_token: String,
     // ) -> Result<Vec<room::Model>, async_graphql::Error> {
     //     let my_ctx = ctx.data::<Context>().unwrap();
-    //     let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+    //     let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
     //         Ok(key) => key,
     //         Err(err) => return Err(async_graphql::Error::new(err.to_string())),
     //     };
@@ -394,7 +400,7 @@ impl MutationRoot {
     ) -> Result<LoginResponse, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
 
-        let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret") {
+        let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.refr_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -420,7 +426,8 @@ impl MutationRoot {
             };
 
             if user.refresh_token == Some(refresh_token.clone()) {
-                let access_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+                let access_key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes())
+                {
                     Ok(key) => key,
                     Err(err) => return Err(async_graphql::Error::new(err.to_string())),
                 };
@@ -513,12 +520,12 @@ impl MutationRoot {
             .is_ok();
 
         if response {
-            let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret") {
+            let refresh_key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.refr_key.as_bytes()) {
                 Ok(key) => key,
                 Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
 
-            let access_key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+            let access_key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
                 Ok(key) => key,
                 Err(err) => return Err(async_graphql::Error::new(err.to_string())),
             };
@@ -588,7 +595,7 @@ impl MutationRoot {
         name: String,
     ) -> Result<room::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -633,7 +640,7 @@ impl MutationRoot {
         avatar_url: Option<String>,
     ) -> Result<user::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -716,7 +723,7 @@ impl MutationRoot {
         content: String,
     ) -> Result<task::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -758,7 +765,7 @@ impl MutationRoot {
         description: String,
     ) -> Result<achievment::Model, async_graphql::Error> {
         let my_ctx = ctx.data::<Context>().unwrap();
-        let key: Hmac<Sha256> = match Hmac::new_from_slice(b"some-secret2") {
+        let key: Hmac<Sha256> = match Hmac::new_from_slice(my_ctx.acs_key.as_bytes()) {
             Ok(key) => key,
             Err(err) => return Err(async_graphql::Error::new(err.to_string())),
         };
@@ -848,6 +855,8 @@ impl MutationRoot {
 async fn main() -> std::io::Result<()> {
     dotenv().expect(".env file not found");
     let db_url = dotenvy::var("DATABASE_URL").expect("HOME environment variable not found");
+    let refr_key = dotenvy::var("REFRESH_KEY").expect("HOME environment variable not found");
+    let acs_key = dotenvy::var("ACCESS_KEY").expect("HOME environment variable not found");
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::DEBUG)
         .with_test_writer()
@@ -862,7 +871,7 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         let schema = Schema::build(QueryRoot, MutationRoot, EmptySubscription)
-            .data(Context::new(db.clone())) // add the context here
+            .data(Context::new(db.clone(), acs_key.clone(), refr_key.clone())) // add the context here
             .finish();
         let cors = Cors::default()
             .allowed_origin("http://127.0.0.1:3000")
